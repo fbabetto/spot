@@ -132,8 +132,12 @@ impl App {
         let home_list_store = gio::ListStore::new(SideBarItem::static_type());
         let home_listbox = build_sidebar_listbox(builder, &home_list_store);
         let model = NavigationModel::new(Rc::clone(&app_model), dispatcher.box_clone());
-        let screen_factory =
-            ScreenFactory::new(Rc::clone(&app_model), dispatcher.box_clone(), worker);
+        let screen_factory = ScreenFactory::new(
+            Rc::clone(&app_model),
+            dispatcher.box_clone(),
+            worker,
+            leaflet.clone(),
+        );
         Box::new(Navigation::new(
             model,
             leaflet,
@@ -189,10 +193,14 @@ impl App {
         app_model: Rc<AppModel>,
         dispatcher: Box<dyn ActionDispatcher>,
     ) -> Box<UserMenu> {
+        let parent: gtk::Window = builder.object("window").unwrap();
+        let settings_model = SettingsModel::new(app_model.clone(), dispatcher.box_clone());
+        let settings = Settings::new(parent, settings_model);
+
         let button: gtk::MenuButton = builder.object("user").unwrap();
         let about: gtk::AboutDialog = builder.object("about").unwrap();
         let model = UserMenuModel::new(app_model, dispatcher);
-        let user_menu = UserMenu::new(button, about, model);
+        let user_menu = UserMenu::new(button, settings, about, model);
         Box::new(user_menu)
     }
 
@@ -202,11 +210,13 @@ impl App {
     }
 
     fn handle(&mut self, message: AppAction) {
-        if let AppAction::Start = message {
-            self.add_ui_components();
-        }
+        let starting = matches!(&message, &AppAction::Start);
 
         let events = self.model.update_state(message);
+
+        if !events.is_empty() && starting {
+            self.add_ui_components();
+        }
 
         for event in events.iter() {
             for component in self.components.iter_mut() {
